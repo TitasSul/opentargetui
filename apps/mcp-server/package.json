@@ -1,0 +1,28 @@
+{
+  "name": "@opentargetui/mcp-server",
+  "version": "0.1.0",
+  "description": "Local HTTP and MCP bridge for OpenTarget UI annotations.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "opentargetui-server": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/cli.ts server",
+    "start": "node dist/cli.js server",
+    "doctor": "node dist/cli.js doctor",
+    "mcp": "tsx src/cli.ts mcp"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "@opentargetui/core": "workspace:*",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "vitest": "^3.2.4"
+  }
+}
