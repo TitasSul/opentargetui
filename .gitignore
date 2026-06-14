@@ -1,5 +1,7 @@
 node_modules/
 dist/
+!apps/extension/dist/
+!apps/extension/dist/**
 coverage/
 .DS_Store
 *.log
