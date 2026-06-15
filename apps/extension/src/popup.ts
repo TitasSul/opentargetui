@@ -1,11 +1,15 @@
-import type { ExtensionSettings } from "@opentargetui/core";
+import type { ExtensionSettings, StructureReference } from "@opentargetui/core";
 
 const status = document.querySelector<HTMLSpanElement>("#status");
 const uiToggle = document.querySelector<HTMLButtonElement>("#ui-toggle");
 const toggle = document.querySelector<HTMLButtonElement>("#toggle");
 const copy = document.querySelector<HTMLButtonElement>("#copy");
+const captureStructure = document.querySelector<HTMLButtonElement>("#capture-structure");
+const clearStructure = document.querySelector<HTMLButtonElement>("#clear-structure");
+const referenceStatus = document.querySelector<HTMLSpanElement>("#reference-status");
 const brandIcon = document.querySelector<HTMLDivElement>("#brand-icon");
 const SETTINGS_KEY = "opentargetui:v1:settings";
+const STRUCTURE_REFERENCE_KEY = "opentargetui:v1:structure-reference";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
   enabled: false,
@@ -84,6 +88,15 @@ async function saveSettings(next: ExtensionSettings): Promise<void> {
   await chrome.storage.local.set({ [SETTINGS_KEY]: next });
 }
 
+async function loadStructureReference(): Promise<StructureReference | null> {
+  const result = await chrome.storage.local.get(STRUCTURE_REFERENCE_KEY);
+  return (result[STRUCTURE_REFERENCE_KEY] as StructureReference | null | undefined) ?? null;
+}
+
+async function clearStructureReference(): Promise<void> {
+  await chrome.storage.local.remove(STRUCTURE_REFERENCE_KEY);
+}
+
 function renderEnabledState(enabled: boolean): void {
   if (status) status.textContent = enabled ? "UI enabled on this tab" : "UI hidden by default";
   if (uiToggle) {
@@ -97,6 +110,23 @@ function renderEnabledState(enabled: boolean): void {
     const key = slot.dataset.icon as keyof typeof icons;
     slot.innerHTML = icon(icons[key]);
   });
+}
+
+function renderReferenceState(reference: StructureReference | null): void {
+  let referenceHost = "reference page";
+  if (reference) {
+    try {
+      referenceHost = new URL(reference.url).hostname;
+    } catch {
+      referenceHost = reference.url;
+    }
+  }
+  if (referenceStatus) {
+    referenceStatus.textContent = reference
+      ? `Structure saved from ${referenceHost}`
+      : "No structure reference saved";
+  }
+  if (clearStructure) clearStructure.disabled = !reference;
 }
 
 async function sendToTab<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<T | undefined> {
@@ -133,10 +163,35 @@ toggle?.addEventListener("click", async () => {
   }
 });
 
+captureStructure?.addEventListener("click", async () => {
+  try {
+    const result = await sendToTab<{ reference?: StructureReference }>("capture-structure-reference");
+    renderReferenceState(result?.reference ?? (await loadStructureReference()));
+    if (status) status.textContent = "Structure reference captured";
+  } catch {
+    if (status) status.textContent = "Reload the page, then try again";
+  }
+});
+
+clearStructure?.addEventListener("click", async () => {
+  try {
+    await clearStructureReference();
+    renderReferenceState(null);
+    if (status) status.textContent = "Structure reference cleared";
+  } catch {
+    if (status) status.textContent = "Could not clear reference";
+  }
+});
+
 copy?.addEventListener("click", async () => {
   try {
-    const result = await sendToTab<{ copied?: boolean }>("copy-feedback");
-    if (status) status.textContent = result?.copied === false ? "No changes to copy" : "Request copied";
+    const result = await sendToTab<{ ok?: boolean; text?: string }>("copy-feedback");
+    if (!result?.ok || !result.text) {
+      if (status) status.textContent = "No changes to copy";
+      return;
+    }
+    await navigator.clipboard.writeText(result.text);
+    if (status) status.textContent = "Request copied";
   } catch {
     if (status) status.textContent = "No content script on this page";
   }
@@ -146,4 +201,10 @@ void loadSettings()
   .then((settings) => renderEnabledState(settings.enabled))
   .catch(() => {
     if (status) status.textContent = "Settings unavailable";
+  });
+
+void loadStructureReference()
+  .then(renderReferenceState)
+  .catch(() => {
+    if (referenceStatus) referenceStatus.textContent = "Reference unavailable";
   });

@@ -90,6 +90,33 @@
         color: var(--otu-ink);
       }
 
+      .reference {
+        display: grid;
+        gap: 8px;
+        padding: 10px;
+        border: 1px solid var(--otu-line);
+        border-radius: 8px;
+        background: var(--otu-soft);
+      }
+
+      .reference-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .reference-title {
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .reference-status {
+        color: var(--otu-muted);
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
       .dot {
         width: 8px;
         height: 8px;
@@ -113,6 +140,12 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
+      }
+
+      .icon-button {
+        width: 36px;
+        min-height: 34px;
+        padding: 0;
       }
 
       button:hover {
@@ -152,6 +185,16 @@
       <div class="status"><span class="dot"></span><span id="status">UI hidden by default</span></div>
       <button id="ui-toggle" class="primary"><span class="button-icon" data-icon="target"></span><span>Show UI</span></button>
       <button id="toggle"><span class="button-icon" data-icon="target"></span><span>Start annotating</span></button>
+      <div class="reference">
+        <div class="reference-row">
+          <div>
+            <div class="reference-title">Structure reference</div>
+            <div class="reference-status" id="reference-status">No structure reference saved</div>
+          </div>
+          <button id="clear-structure" class="icon-button" aria-label="Clear structure reference" title="Clear reference">&times;</button>
+        </div>
+        <button id="capture-structure"><span class="button-icon" data-icon="target"></span><span>Capture this structure</span></button>
+      </div>
       <button id="copy"><span class="button-icon" data-icon="copy"></span><span>Copy request</span></button>
     </main>
   </body>

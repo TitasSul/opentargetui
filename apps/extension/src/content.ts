@@ -8,12 +8,15 @@ import {
   pageSessionKey,
   pageStorageKey,
   settingsStorageKey,
+  structureReferenceStorageKey,
   type Annotation,
   type AnnotationIntent,
   type AnnotationSeverity,
   type ExtensionSettings,
   type OutputDetail,
   type RectSnapshot,
+  type StructureReference,
+  type StructureReferenceSection,
   type UiPosition
 } from "@opentargetui/core";
 import checkIcon from "lucide-static/icons/check.svg?raw";
@@ -1601,6 +1604,15 @@ function pageRectFromDom(rect: DOMRect): RectSnapshot {
   };
 }
 
+function viewportRectFromDom(rect: DOMRect): RectSnapshot {
+  return {
+    x: rect.left,
+    y: rect.top,
+    width: rect.width,
+    height: rect.height
+  };
+}
+
 function moveAnnotationFromPoint(source: MoveSource, clientX: number, clientY: number): Annotation {
   const timestamp = Date.now();
   const width = Math.max(source.rect.width, 1);
@@ -1797,21 +1809,192 @@ async function deleteEditingAnnotation(): Promise<void> {
   await deleteAnnotationById(editingId);
 }
 
+function isVisibleStructureElement(element: Element): boolean {
+  if (!(element instanceof HTMLElement)) return false;
+  if (element.closest(`[data-opentargetui]`)) return false;
+  const rect = element.getBoundingClientRect();
+  if (rect.width < 80 || rect.height < 40) return false;
+  const style = getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0";
+}
+
+function sectionLandmark(element: Element): string {
+  const role = element.getAttribute("role");
+  if (role) return role;
+  const tag = element.tagName.toLowerCase();
+  if (tag === "header") return "header";
+  if (tag === "nav") return "navigation";
+  if (tag === "main") return "main";
+  if (tag === "aside") return "aside";
+  if (tag === "footer") return "footer";
+  if (tag === "article") return "article";
+  if (tag === "section") return "section";
+  return "content block";
+}
+
+function elementSignature(element: Element): string {
+  const tag = element.tagName.toLowerCase();
+  const role = element.getAttribute("role");
+  const children = Array.from(element.children)
+    .slice(0, 4)
+    .map((child) => child.tagName.toLowerCase())
+    .join("+");
+  return `${tag}${role ? `[${role}]` : ""}${children ? `>${children}` : ""}`;
+}
+
+function countWithin(element: Element, selector: string): number {
+  return element.querySelectorAll(selector).length;
+}
+
+function directVisibleChildren(element: Element): string[] {
+  return Array.from(element.children)
+    .filter(isVisibleStructureElement)
+    .slice(0, 8)
+    .map((child) => {
+      const rect = child.getBoundingClientRect();
+      const tag = child.tagName.toLowerCase();
+      const role = child.getAttribute("role");
+      return `${tag}${role ? `[${role}]` : ""} ${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    });
+}
+
+function repeatedPatterns(element: Element): string[] {
+  const groups = new Map<string, number>();
+  Array.from(element.children)
+    .filter(isVisibleStructureElement)
+    .forEach((child) => {
+      const signature = elementSignature(child);
+      groups.set(signature, (groups.get(signature) ?? 0) + 1);
+    });
+  return Array.from(groups.entries())
+    .filter(([, count]) => count > 1)
+    .slice(0, 5)
+    .map(([signature, count]) => `${count}x ${signature}`);
+}
+
+function sectionFromElement(element: Element, index: number): StructureReferenceSection {
+  const rect = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  const role = element.getAttribute("role") ?? undefined;
+  return {
+    index,
+    tag: element.tagName.toLowerCase(),
+    ...(role ? { role } : {}),
+    landmark: sectionLandmark(element),
+    bounds: viewportRectFromDom(rect),
+    layout: [
+      style.display,
+      style.flexDirection !== "row" ? `flex-${style.flexDirection}` : null,
+      style.gridTemplateColumns !== "none" ? "grid" : null,
+      style.position !== "static" ? style.position : null
+    ]
+      .filter(Boolean)
+      .join(", "),
+    childCount: Array.from(element.children).filter(isVisibleStructureElement).length,
+    directChildren: directVisibleChildren(element),
+    patterns: repeatedPatterns(element),
+    counts: {
+      headings: countWithin(element, "h1,h2,h3,h4,h5,h6"),
+      links: countWithin(element, "a[href]"),
+      buttons: countWithin(element, "button,[role='button']"),
+      forms: countWithin(element, "form,input,select,textarea"),
+      media: countWithin(element, "img,picture,svg,video"),
+      repeatedItems: countWithin(element, "article,li,[class*='card' i]")
+    }
+  };
+}
+
+function captureStructureReference(): StructureReference {
+  const selector = [
+    "header",
+    "nav",
+    "main",
+    "section",
+    "article",
+    "aside",
+    "footer",
+    "[role='banner']",
+    "[role='navigation']",
+    "[role='main']",
+    "[role='complementary']",
+    "[role='contentinfo']"
+  ].join(",");
+  const candidates = Array.from(document.querySelectorAll(selector)).filter(isVisibleStructureElement);
+  const topLevel = candidates.filter((candidate) => !candidates.some((other) => other !== candidate && other.contains(candidate)));
+  const sections = (topLevel.length > 0 ? topLevel : Array.from(document.body.children).filter(isVisibleStructureElement))
+    .slice(0, 16)
+    .map((element, index) => sectionFromElement(element, index + 1));
+
+  return {
+    url: location.href,
+    title: document.title,
+    capturedAt: new Date().toISOString(),
+    viewport: {
+      width: window.innerWidth,
+      height: window.innerHeight
+    },
+    sections
+  };
+}
+
+function formatStructureReference(reference: StructureReference): string {
+  const sectionLines = reference.sections.map((section) => {
+    const counts = Object.entries(section.counts)
+      .filter(([, count]) => count > 0)
+      .map(([key, count]) => `${key}: ${count}`)
+      .join(", ");
+    return [
+      `${section.index}. ${section.landmark} (${section.tag}${section.role ? `, role=${section.role}` : ""})`,
+      `   - Bounds: ${Math.round(section.bounds.x)}, ${Math.round(section.bounds.y)} (${Math.round(section.bounds.width)}x${Math.round(section.bounds.height)}px)`,
+      section.layout ? `   - Layout: ${section.layout}` : null,
+      `   - Visible direct children: ${section.childCount}`,
+      section.directChildren.length ? `   - Child blocks: ${section.directChildren.join("; ")}` : null,
+      section.patterns.length ? `   - Repeated patterns: ${section.patterns.join("; ")}` : null,
+      counts ? `   - Element counts: ${counts}` : null
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+
+  return [
+    "Reference structure to follow:",
+    "Use this only for page organization, section order, layout rhythm, and repeated block patterns. Keep the target site's brand, copy, colors, images, and assets unless separately requested.",
+    `Reference page: ${reference.url}`,
+    `Reference viewport: ${reference.viewport.width}x${reference.viewport.height}`,
+    "",
+    ...sectionLines
+  ].join("\n");
+}
+
+async function buildFeedbackMarkdown(items: Annotation[]): Promise<string | null> {
+  const reference = await storageGet<StructureReference | null>(structureReferenceStorageKey(), null);
+  if (items.length === 0 && !reference) return null;
+  const markdownParts: string[] = [];
+  if (reference) markdownParts.push(formatStructureReference(reference));
+  if (items.length > 0) {
+    markdownParts.push(
+      formatAnnotationsMarkdown(items, {
+        mode: "change-request",
+        detail: settings.outputDetail,
+        includeHeader: true
+      })
+    );
+  } else {
+    markdownParts.push("Restructure the current page to follow the reference structure above.");
+  }
+  return markdownParts.join("\n\n---\n\n");
+}
+
 async function copyFeedback(show = true): Promise<boolean> {
   return copyAnnotations(activeAnnotations(), show);
 }
 
 async function copyAnnotations(items: Annotation[], show = true): Promise<boolean> {
-  if (items.length === 0) {
+  const markdown = await buildFeedbackMarkdown(items);
+  if (markdown === null) {
     if (show) showToast("No changes to copy");
     return false;
   }
-
-  const markdown = formatAnnotationsMarkdown(items, {
-    mode: "change-request",
-    detail: settings.outputDetail,
-    includeHeader: true
-  });
   await navigator.clipboard.writeText(markdown);
   if (show) showToast("Change request copied");
   return true;
@@ -2288,8 +2471,15 @@ function handlePopupMessage(
     return true;
   }
   if (message.type === "copy-feedback") {
-    void copyFeedback().then((copied) => sendResponse({ ok: copied, copied }));
+    void buildFeedbackMarkdown(activeAnnotations()).then((text) => sendResponse({ ok: text !== null, text: text ?? undefined }));
     return true;
+  }
+  if (message.type === "capture-structure-reference") {
+    const reference = captureStructureReference();
+    sendResponse({ ok: true, reference });
+    void storageSet(structureReferenceStorageKey(), reference);
+    showToast("Structure reference captured");
+    return false;
   }
   return false;
 }
