@@ -218,6 +218,7 @@ style.textContent = `
 
   .hover-frame {
     position: fixed;
+    z-index: 10;
     display: none;
     pointer-events: none;
     border: 1.5px solid var(--otu-accent);
@@ -229,6 +230,7 @@ style.textContent = `
   .marker-layer {
     position: fixed;
     inset: 0;
+    z-index: 20;
     pointer-events: none;
   }
 
@@ -256,6 +258,7 @@ style.textContent = `
 
   .toolbar {
     position: fixed;
+    z-index: 50;
     right: 18px;
     bottom: 18px;
     width: min(360px, calc(100vw - 28px));
@@ -517,6 +520,7 @@ style.textContent = `
 
   .panel {
     position: fixed;
+    z-index: 40;
     pointer-events: auto;
     width: min(360px, calc(100vw - 28px));
     border: 1px solid var(--otu-line);
@@ -878,6 +882,7 @@ style.textContent = `
 
   .toast {
     position: fixed;
+    z-index: 60;
     left: 50%;
     bottom: 22px;
     transform: translateX(-50%) translateY(20px);
