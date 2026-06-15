@@ -37,7 +37,7 @@ const ROOT_ID = "opentargetui-root";
 const PAUSE_STYLE_ID = "opentargetui-pause-style";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
-  enabled: true,
+  enabled: false,
   outputDetail: "standard",
   markerColor: "#35c5b1",
   serverUrl: "http://localhost:4747",
@@ -1138,6 +1138,11 @@ function intentLabel(value: AnnotationIntent): string {
 }
 
 function renderToolbar(): void {
+  if (!settings.enabled) {
+    toolbar.innerHTML = "";
+    return;
+  }
+
   toolbar.className = `toolbar${collapsed ? " collapsed" : ""}`;
 
   if (collapsed) {
@@ -1216,6 +1221,11 @@ function renderToolbar(): void {
 
 function renderMarkers(): void {
   markerLayer.innerHTML = "";
+  if (!settings.enabled) {
+    markerLayer.style.display = "none";
+    return;
+  }
+
   markerLayer.style.display = settings.hideMarkers ? "none" : "block";
 
   annotations.forEach((annotation, index) => {
@@ -1400,6 +1410,8 @@ function renderSettings(open = false): void {
 }
 
 async function handleToolbarAction(action: string): Promise<void> {
+  if (!settings.enabled) return;
+
   if (action === "expand") {
     collapsed = false;
     renderToolbar();
@@ -1959,10 +1971,41 @@ async function loadState(): Promise<void> {
   annotations = await storageGet<Annotation[]>(pageStorageKey(location.href), []);
   sessionId = await storageGet<string | null>(pageSessionKey(location.href), null);
   updateAccent();
+  applyEnabledState();
   renderToolbar();
   renderMarkers();
   renderSettings(false);
   if (settings.syncEnabled) void connectToServer();
+}
+
+function applyEnabledState(): void {
+  root.style.display = settings.enabled ? "block" : "none";
+  if (settings.enabled) return;
+  selectionMode = false;
+  moveMode = false;
+  moveSource = null;
+  pendingTarget = null;
+  editingId = null;
+  hideHoverFrame();
+  closeComposer();
+  renderBatch(false);
+  renderSettings(false);
+}
+
+function applySettings(next: ExtensionSettings): void {
+  const wasEnabled = settings.enabled;
+  settings = { ...DEFAULT_SETTINGS, ...next, serverUrl: normalizeServerUrl(next.serverUrl || DEFAULT_SETTINGS.serverUrl) };
+  updateAccent();
+  applyEnabledState();
+  renderToolbar();
+  renderMarkers();
+  if (settings.enabled && !wasEnabled) collapsed = false;
+  if (settings.enabled) {
+    renderToolbar();
+    if (batchPanel.classList.contains("open")) renderBatch(true);
+  }
+  if (settings.syncEnabled) void connectToServer();
+  else disconnectEvents();
 }
 
 async function ensureSession(): Promise<string> {
@@ -2071,6 +2114,7 @@ function eventElement(event: Event): Element | null {
 }
 
 function handleMouseMove(event: MouseEvent): void {
+  if (!settings.enabled) return;
   if ((!selectionMode && !moveMode) || isInsideOverlay(event)) return;
   const element = eventElement(event);
   if (!element) return;
@@ -2078,10 +2122,12 @@ function handleMouseMove(event: MouseEvent): void {
 }
 
 function handleMouseOut(): void {
+  if (!settings.enabled) return;
   if (!selectionMode && !moveMode) hideHoverFrame();
 }
 
 async function handleMoveClick(event: MouseEvent): Promise<void> {
+  if (!settings.enabled) return;
   if (isInsideOverlay(event)) return;
   const element = eventElement(event);
   if (!element && !moveSource) return;
@@ -2115,6 +2161,7 @@ async function handleMoveClick(event: MouseEvent): Promise<void> {
 }
 
 function handleMouseUp(event: MouseEvent): void {
+  if (!settings.enabled) return;
   if (!selectionMode || isInsideOverlay(event)) return;
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.toString().trim().length === 0) return;
@@ -2139,6 +2186,7 @@ function handleMouseUp(event: MouseEvent): void {
 }
 
 function handleClick(event: MouseEvent): void {
+  if (!settings.enabled) return;
   if (moveMode) {
     void handleMoveClick(event);
     return;
@@ -2169,6 +2217,7 @@ function handleClick(event: MouseEvent): void {
 }
 
 function handleWindowResize(): void {
+  if (!settings.enabled) return;
   renderMarkers();
   applyToolbarPosition();
 }
@@ -2203,7 +2252,26 @@ function handlePopupMessage(
   sendResponse: (response?: unknown) => void
 ): boolean {
   if (message.source !== "opentargetui-popup") return false;
+  if (message.type === "set-enabled") {
+    const enabled = Boolean((message as { enabled?: boolean }).enabled);
+    settings = { ...settings, enabled };
+    void storageSet(settingsStorageKey(), settings);
+    applyEnabledState();
+    renderToolbar();
+    renderMarkers();
+    if (enabled) {
+      collapsed = false;
+      renderToolbar();
+    }
+    sendResponse({ ok: true, enabled });
+    return true;
+  }
   if (message.type === "toggle-selection") {
+    if (!settings.enabled) {
+      settings = { ...settings, enabled: true };
+      void storageSet(settingsStorageKey(), settings);
+      applyEnabledState();
+    }
     selectionMode = !selectionMode;
     moveMode = false;
     moveSource = null;
@@ -2224,6 +2292,14 @@ function handlePopupMessage(
 try {
   if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     chrome.runtime.onMessage.addListener(handlePopupMessage);
+  }
+  if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName !== "local") return;
+      const change = changes[settingsStorageKey()];
+      if (!change?.newValue) return;
+      applySettings(change.newValue as ExtensionSettings);
+    });
   }
 } catch (error) {
   if (isExtensionContextInvalidated(error)) extensionContextInvalidated = true;

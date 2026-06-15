@@ -126,6 +126,17 @@
         background: var(--otu-accent);
         color: var(--otu-accent-ink);
       }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.46;
+      }
+
+      button:disabled:hover {
+        border-color: var(--otu-line);
+        background: var(--otu-button);
+        color: var(--otu-ink);
+      }
     </style>
   </head>
   <body>
@@ -137,8 +148,9 @@
           <p>Annotate this page for your coding agent.</p>
         </div>
       </div>
-      <div class="status"><span class="dot"></span><span id="status">Ready on this tab</span></div>
-      <button id="toggle" class="primary"><span class="button-icon" data-icon="target"></span><span>Start annotating</span></button>
+      <div class="status"><span class="dot"></span><span id="status">UI hidden by default</span></div>
+      <button id="ui-toggle" class="primary"><span class="button-icon" data-icon="target"></span><span>Show UI</span></button>
+      <button id="toggle"><span class="button-icon" data-icon="target"></span><span>Start annotating</span></button>
       <button id="copy"><span class="button-icon" data-icon="copy"></span><span>Copy request</span></button>
     </main>
     <script type="module" src="/src/popup.ts"></script>
