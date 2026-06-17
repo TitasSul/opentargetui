@@ -81,11 +81,11 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
 
 async function loadSettings(): Promise<ExtensionSettings> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  return { ...DEFAULT_SETTINGS, ...(result[SETTINGS_KEY] as Partial<ExtensionSettings> | undefined) };
+  return { ...DEFAULT_SETTINGS, ...(result[SETTINGS_KEY] as Partial<ExtensionSettings> | undefined), enabled: false };
 }
 
 async function saveSettings(next: ExtensionSettings): Promise<void> {
-  await chrome.storage.local.set({ [SETTINGS_KEY]: next });
+  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...next, enabled: false } });
 }
 
 async function loadStructureReference(): Promise<StructureReference | null> {
@@ -135,13 +135,50 @@ async function sendToTab<T = unknown>(type: string, payload: Record<string, unkn
   return (await chrome.tabs.sendMessage(tab.id, { source: "opentargetui-popup", type, ...payload })) as T | undefined;
 }
 
+async function activeTabId(): Promise<number> {
+  const tab = await activeTab();
+  if (!tab?.id) throw new Error("No active tab");
+  return tab.id;
+}
+
+async function getActiveUiState(): Promise<{ enabled: boolean }> {
+  try {
+    return (await sendToTab<{ enabled?: boolean }>("get-state").then((state) => ({ enabled: Boolean(state?.enabled) })));
+  } catch {
+    return { enabled: false };
+  }
+}
+
+async function ensureContentScript(): Promise<void> {
+  const tabId = await activeTabId();
+  try {
+    await chrome.tabs.sendMessage(tabId, { source: "opentargetui-popup", type: "get-state" });
+    return;
+  } catch {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content.js"]
+    });
+  }
+}
+
+async function sendToReadyTab<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<T | undefined> {
+  await ensureContentScript();
+  return sendToTab<T>(type, payload);
+}
+
 uiToggle?.addEventListener("click", async () => {
   try {
-    const current = await loadSettings();
-    const next = { ...current, enabled: !current.enabled };
-    await saveSettings(next);
+    const currentSettings = await loadSettings();
+    const currentState = await getActiveUiState();
+    const next = { ...currentSettings, enabled: !currentState.enabled };
+    await saveSettings(currentSettings);
     renderEnabledState(next.enabled);
-    await sendToTab("set-enabled", { enabled: next.enabled });
+    if (next.enabled) {
+      await sendToReadyTab("set-enabled", { enabled: true });
+      return;
+    }
+    await sendToTab("set-enabled", { enabled: false }).catch(() => undefined);
   } catch {
     if (status) status.textContent = "Reload the page, then try again";
   }
@@ -149,14 +186,10 @@ uiToggle?.addEventListener("click", async () => {
 
 toggle?.addEventListener("click", async () => {
   try {
-    const current = await loadSettings();
-    if (!current.enabled) {
-      const next = { ...current, enabled: true };
-      await saveSettings(next);
-      renderEnabledState(true);
-      await sendToTab("set-enabled", { enabled: true });
-    }
-    await sendToTab("toggle-selection");
+    const currentState = await getActiveUiState();
+    if (!currentState.enabled) renderEnabledState(true);
+    await sendToReadyTab("set-enabled", { enabled: true });
+    await sendToReadyTab("toggle-selection");
     if (status) status.textContent = "Annotation mode toggled";
   } catch {
     if (status) status.textContent = "Reload the page, then try again";
@@ -165,7 +198,7 @@ toggle?.addEventListener("click", async () => {
 
 captureStructure?.addEventListener("click", async () => {
   try {
-    const result = await sendToTab<{ reference?: StructureReference }>("capture-structure-reference");
+    const result = await sendToReadyTab<{ reference?: StructureReference }>("capture-structure-reference");
     renderReferenceState(result?.reference ?? (await loadStructureReference()));
     if (status) status.textContent = "Structure reference captured";
   } catch {
@@ -185,7 +218,7 @@ clearStructure?.addEventListener("click", async () => {
 
 copy?.addEventListener("click", async () => {
   try {
-    const result = await sendToTab<{ ok?: boolean; text?: string }>("copy-feedback");
+    const result = await sendToReadyTab<{ ok?: boolean; text?: string }>("copy-feedback");
     if (!result?.ok || !result.text) {
       if (status) status.textContent = "No changes to copy";
       return;
@@ -197,8 +230,8 @@ copy?.addEventListener("click", async () => {
   }
 });
 
-void loadSettings()
-  .then((settings) => renderEnabledState(settings.enabled))
+void getActiveUiState()
+  .then((state) => renderEnabledState(state.enabled))
   .catch(() => {
     if (status) status.textContent = "Settings unavailable";
   });

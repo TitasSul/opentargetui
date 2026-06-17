@@ -166,6 +166,7 @@ let pausedMedia: HTMLMediaElement[] = [];
 let extensionContextInvalidated = false;
 let serverOffline = false;
 let serverOfflineNotified = false;
+let pageEnabledOverride: boolean | null = null;
 
 const existingRoot = document.getElementById(ROOT_ID);
 if (existingRoot) existingRoot.remove();
@@ -996,6 +997,10 @@ async function storageSet(key: string, value: unknown): Promise<void> {
   }
 }
 
+async function persistSettingsPreferences(): Promise<void> {
+  await storageSet(settingsStorageKey(), { ...settings, enabled: false });
+}
+
 function normalizeServerUrl(value: string): string {
   return value.trim().replace(/\/+$/, "") || DEFAULT_SETTINGS.serverUrl;
 }
@@ -1405,7 +1410,7 @@ function renderSettings(open = false): void {
     const blockPageInteractions = Boolean(settingsPanel.querySelector<HTMLInputElement>("#otu-block")?.checked);
 
     settings = { ...settings, outputDetail: detail, markerColor, serverUrl, syncEnabled, copyOnAdd, blockPageInteractions };
-    await storageSet(settingsStorageKey(), settings);
+    await persistSettingsPreferences();
     updateAccent();
     renderToolbar();
     renderMarkers();
@@ -1471,7 +1476,7 @@ async function handleToolbarAction(action: string): Promise<void> {
 
   if (action === "hide") {
     settings = { ...settings, hideMarkers: !settings.hideMarkers };
-    await storageSet(settingsStorageKey(), settings);
+    await persistSettingsPreferences();
     renderToolbar();
     renderMarkers();
     return;
@@ -2049,7 +2054,7 @@ function endToolbarDrag(event: PointerEvent): void {
     const rect = toolbar.getBoundingClientRect();
     const next = clampUiPosition(rect.left, rect.top, rect.width, rect.height);
     settings = { ...settings, uiPosition: next };
-    void storageSet(settingsStorageKey(), settings);
+    void persistSettingsPreferences();
     suppressNextToolbarClick = true;
     window.setTimeout(() => {
       suppressNextToolbarClick = false;
@@ -2154,7 +2159,7 @@ async function persistAnnotations(): Promise<void> {
 }
 
 async function loadState(): Promise<void> {
-  settings = { ...DEFAULT_SETTINGS, ...(await storageGet(settingsStorageKey(), DEFAULT_SETTINGS)) };
+  settings = { ...DEFAULT_SETTINGS, ...(await storageGet(settingsStorageKey(), DEFAULT_SETTINGS)), enabled: pageEnabledOverride ?? false };
   settings.serverUrl = normalizeServerUrl(settings.serverUrl);
   annotations = await storageGet<Annotation[]>(pageStorageKey(location.href), []);
   sessionId = await storageGet<string | null>(pageSessionKey(location.href), null);
@@ -2182,7 +2187,12 @@ function applyEnabledState(): void {
 
 function applySettings(next: ExtensionSettings): void {
   const wasEnabled = settings.enabled;
-  settings = { ...DEFAULT_SETTINGS, ...next, serverUrl: normalizeServerUrl(next.serverUrl || DEFAULT_SETTINGS.serverUrl) };
+  settings = {
+    ...DEFAULT_SETTINGS,
+    ...next,
+    enabled: settings.enabled,
+    serverUrl: normalizeServerUrl(next.serverUrl || DEFAULT_SETTINGS.serverUrl)
+  };
   updateAccent();
   applyEnabledState();
   renderToolbar();
@@ -2440,10 +2450,14 @@ function handlePopupMessage(
   sendResponse: (response?: unknown) => void
 ): boolean {
   if (message.source !== "opentargetui-popup") return false;
+  if (message.type === "get-state") {
+    sendResponse({ ok: true, enabled: settings.enabled });
+    return true;
+  }
   if (message.type === "set-enabled") {
     const enabled = Boolean((message as { enabled?: boolean }).enabled);
+    pageEnabledOverride = enabled;
     settings = { ...settings, enabled };
-    void storageSet(settingsStorageKey(), settings);
     applyEnabledState();
     renderToolbar();
     renderMarkers();
@@ -2456,8 +2470,8 @@ function handlePopupMessage(
   }
   if (message.type === "toggle-selection") {
     if (!settings.enabled) {
+      pageEnabledOverride = true;
       settings = { ...settings, enabled: true };
-      void storageSet(settingsStorageKey(), settings);
       applyEnabledState();
     }
     selectionMode = !selectionMode;
