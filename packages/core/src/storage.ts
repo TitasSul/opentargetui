@@ -14,10 +14,6 @@ export function settingsStorageKey(): string {
   return `${STORAGE_PREFIX}:settings`;
 }
 
-export function structureReferenceStorageKey(): string {
-  return `${STORAGE_PREFIX}:structure-reference`;
-}
-
 export function safeUrlParts(rawUrl: string): { origin: string; pathname: string } {
   try {
     const url = new URL(rawUrl);

@@ -1,15 +1,9 @@
-import type { ExtensionSettings, StructureReference } from "@opentargetui/core";
+import type { ExtensionSettings } from "@opentargetui/core";
 
 const status = document.querySelector<HTMLSpanElement>("#status");
 const uiToggle = document.querySelector<HTMLButtonElement>("#ui-toggle");
-const toggle = document.querySelector<HTMLButtonElement>("#toggle");
-const copy = document.querySelector<HTMLButtonElement>("#copy");
-const captureStructure = document.querySelector<HTMLButtonElement>("#capture-structure");
-const clearStructure = document.querySelector<HTMLButtonElement>("#clear-structure");
-const referenceStatus = document.querySelector<HTMLSpanElement>("#reference-status");
 const brandIcon = document.querySelector<HTMLDivElement>("#brand-icon");
 const SETTINGS_KEY = "opentargetui:v1:settings";
-const STRUCTURE_REFERENCE_KEY = "opentargetui:v1:structure-reference";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
   enabled: false,
@@ -23,7 +17,6 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
 };
 
 const icons = {
-  copy: `<svg class="icon lucide lucide-copy" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`,
   target: `<svg class="icon lucide lucide-target" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`
 } as const;
 
@@ -88,15 +81,6 @@ async function saveSettings(next: ExtensionSettings): Promise<void> {
   await chrome.storage.local.set({ [SETTINGS_KEY]: { ...next, enabled: false } });
 }
 
-async function loadStructureReference(): Promise<StructureReference | null> {
-  const result = await chrome.storage.local.get(STRUCTURE_REFERENCE_KEY);
-  return (result[STRUCTURE_REFERENCE_KEY] as StructureReference | null | undefined) ?? null;
-}
-
-async function clearStructureReference(): Promise<void> {
-  await chrome.storage.local.remove(STRUCTURE_REFERENCE_KEY);
-}
-
 function renderEnabledState(enabled: boolean): void {
   if (status) status.textContent = enabled ? "UI enabled on this tab" : "UI hidden by default";
   if (uiToggle) {
@@ -105,28 +89,10 @@ function renderEnabledState(enabled: boolean): void {
       ? '<span class="button-icon" data-icon="target"></span><span>Hide UI</span>'
       : '<span class="button-icon" data-icon="target"></span><span>Show UI</span>';
   }
-  if (toggle) toggle.disabled = !enabled;
   document.querySelectorAll<HTMLElement>("[data-icon]").forEach((slot) => {
     const key = slot.dataset.icon as keyof typeof icons;
     slot.innerHTML = icon(icons[key]);
   });
-}
-
-function renderReferenceState(reference: StructureReference | null): void {
-  let referenceHost = "reference page";
-  if (reference) {
-    try {
-      referenceHost = new URL(reference.url).hostname;
-    } catch {
-      referenceHost = reference.url;
-    }
-  }
-  if (referenceStatus) {
-    referenceStatus.textContent = reference
-      ? `Structure saved from ${referenceHost}`
-      : "No structure reference saved";
-  }
-  if (clearStructure) clearStructure.disabled = !reference;
 }
 
 async function sendToTab<T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<T | undefined> {
@@ -184,60 +150,8 @@ uiToggle?.addEventListener("click", async () => {
   }
 });
 
-toggle?.addEventListener("click", async () => {
-  try {
-    const currentState = await getActiveUiState();
-    if (!currentState.enabled) renderEnabledState(true);
-    await sendToReadyTab("set-enabled", { enabled: true });
-    await sendToReadyTab("toggle-selection");
-    if (status) status.textContent = "Annotation mode toggled";
-  } catch {
-    if (status) status.textContent = "Reload the page, then try again";
-  }
-});
-
-captureStructure?.addEventListener("click", async () => {
-  try {
-    const result = await sendToReadyTab<{ reference?: StructureReference }>("capture-structure-reference");
-    renderReferenceState(result?.reference ?? (await loadStructureReference()));
-    if (status) status.textContent = "Structure reference captured";
-  } catch {
-    if (status) status.textContent = "Reload the page, then try again";
-  }
-});
-
-clearStructure?.addEventListener("click", async () => {
-  try {
-    await clearStructureReference();
-    renderReferenceState(null);
-    if (status) status.textContent = "Structure reference cleared";
-  } catch {
-    if (status) status.textContent = "Could not clear reference";
-  }
-});
-
-copy?.addEventListener("click", async () => {
-  try {
-    const result = await sendToReadyTab<{ ok?: boolean; text?: string }>("copy-feedback");
-    if (!result?.ok || !result.text) {
-      if (status) status.textContent = "No changes to copy";
-      return;
-    }
-    await navigator.clipboard.writeText(result.text);
-    if (status) status.textContent = "Request copied";
-  } catch {
-    if (status) status.textContent = "No content script on this page";
-  }
-});
-
 void getActiveUiState()
   .then((state) => renderEnabledState(state.enabled))
   .catch(() => {
     if (status) status.textContent = "Settings unavailable";
-  });
-
-void loadStructureReference()
-  .then(renderReferenceState)
-  .catch(() => {
-    if (referenceStatus) referenceStatus.textContent = "Reference unavailable";
   });

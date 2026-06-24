@@ -89,30 +89,6 @@ export interface MarkdownOptions {
   generatedAt?: Date;
 }
 
-export interface StructureReferenceSection {
-  index: number;
-  tag: string;
-  role?: string;
-  landmark: string;
-  bounds: RectSnapshot;
-  layout: string;
-  childCount: number;
-  directChildren: string[];
-  patterns: string[];
-  counts: Record<string, number>;
-}
-
-export interface StructureReference {
-  url: string;
-  title?: string;
-  capturedAt: string;
-  viewport: {
-    width: number;
-    height: number;
-  };
-  sections: StructureReferenceSection[];
-}
-
 export interface UiPosition {
   left: number;
   top: number;
