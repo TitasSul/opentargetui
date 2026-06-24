@@ -6,9 +6,9 @@ This is a clean-room implementation. It is feature-compatible with the public id
 
 ![OpenTarget UI screenshot](assets/screenshot.png)
 
-**Before**
+**Before copying UI changes from a selected DOM element**
 
-![OpenTarget UI before screenshot](assets/export.png)
+![OpenTarget UI before copying changes](assets/removebg.png)
 
 ## What ships in v0.1
 
