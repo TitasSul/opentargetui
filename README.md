@@ -1,27 +1,23 @@
 # OpenTarget UI
 
-OpenTarget UI is an MIT-licensed browser extension for giving precise visual feedback to AI coding agents. It lets you click elements on a live page, attach notes, and export structured markdown or sync annotations to a local MCP server.
+OpenTarget UI is an MIT-licensed browser extension for giving precise visual feedback to AI coding agents. It lets you mark elements on a live page, copy focused change requests from the annotation popup, create move requests, and optionally sync saved annotations to a local MCP server.
 
 This is a clean-room implementation. It is feature-compatible with the public idea of structured UI feedback, but it does not copy Agentation source code, branding, assets, or interface text.
 
 ## What ships in v0.1
 
 - Chrome/Edge Manifest V3 extension.
-- Click-to-annotate overlay with text selection support.
-- Point-to-move mode for asking an agent to move a selected element to a clicked destination.
+- Popup-launched page overlay that stays hidden until enabled on the active tab.
+- Annotate mode with text selection support.
+- Annotation composer with `Merge` for saving to the page batch and `Copy` for copying one drafted annotation without saving a marker.
+- Move mode for selecting an element, clicking a destination, saving the move request, and copying that move request to the clipboard.
 - Review batch panel for editing, deleting, or clearing the current page changes.
-- Copy action for exporting the current active annotations as an LLM-ready change request.
 - Local page storage through `chrome.storage.local`.
-- LLM-ready merged change-request copy, with compact, standard, detailed, and forensic context levels.
+- LLM-ready change-request markdown, with compact, standard, detailed, and forensic context levels.
 - Optional sync to a local HTTP server on `http://localhost:4747`, with visible connection health in the toolbar.
 - MCP tools for agents to list, acknowledge, resolve, dismiss, reply to, and watch annotations.
 
-## Install for development
-
-```sh
-pnpm install
-pnpm build
-```
+## Use the extension
 
 Load the extension from `apps/extension/dist`:
 
@@ -30,17 +26,43 @@ Load the extension from `apps/extension/dist`:
 3. Click "Load unpacked".
 4. Select `apps/extension/dist`.
 
-Start the local server:
+Do not load the repository root or `apps/extension/src`; Chrome and Edge need the built `dist` folder.
+
+No build step is needed just to load the extension because the unpacked extension bundle is committed in `apps/extension/dist`.
+
+## Extension usage
+
+1. Click the OpenTarget UI browser action and choose `Show UI`.
+2. Use `Annotate` to click a target or select text on the page.
+3. In the annotation popup, choose `Merge` to save it into the page batch or `Copy` to copy only that one drafted annotation.
+4. Use `Move` to click an element, then click its destination. The completed move request is saved and copied.
+5. Use `Review` to edit, delete, or clear saved page changes.
+
+## Start local sync server
+
+On macOS, double-click:
+
+```txt
+Start OpenTarget UI Server.command
+```
+
+The launcher installs dependencies if needed, builds the local server, then starts `http://localhost:4747`. Keep the Terminal window open while extension sync is enabled.
+
+Manual server commands:
 
 ```sh
+pnpm install
+pnpm build
 pnpm server
 ```
 
-Run the server health check:
+Run the health check:
 
 ```sh
 pnpm doctor
 ```
+
+## Development
 
 Verify source changes and the committed unpacked-extension bundle:
 
