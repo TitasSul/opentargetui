@@ -6,6 +6,10 @@ This is a clean-room implementation. It is feature-compatible with the public id
 
 ![OpenTarget UI screenshot](assets/screenshot.png)
 
+**Before**
+
+![OpenTarget UI before screenshot](assets/export.png)
+
 ## What ships in v0.1
 
 - Chrome/Edge Manifest V3 extension.
