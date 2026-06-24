@@ -2299,6 +2299,12 @@ async function handleMoveClick(event: MouseEvent): Promise<void> {
   }
 
   const annotation = moveAnnotationFromPoint(moveSource, event.clientX, event.clientY);
+  let copied = false;
+  try {
+    copied = await copyAnnotations([annotation], false);
+  } catch (error) {
+    console.warn("[OpenTarget UI] Move request clipboard copy failed", error);
+  }
   annotations = [...annotations, annotation];
   moveMode = false;
   moveSource = null;
@@ -2307,7 +2313,7 @@ async function handleMoveClick(event: MouseEvent): Promise<void> {
   renderMarkers();
   if (batchPanel.classList.contains("open")) renderBatch(true);
   if (settings.syncEnabled) queueRemoteSync(() => syncAnnotation(annotation));
-  showToast("Move request added");
+  showToast(copied ? "Move request copied" : "Move request added");
 }
 
 function handleMouseUp(event: MouseEvent): void {
