@@ -9,10 +9,11 @@ This is a clean-room implementation. It is feature-compatible with the public id
 - Chrome/Edge Manifest V3 extension.
 - Click-to-annotate overlay with text selection support.
 - Point-to-move mode for asking an agent to move a selected element to a clicked destination.
-- Review batch panel for editing, deleting, copying, or clearing the current page changes.
+- Review batch panel for editing, deleting, or clearing the current page changes.
+- Copy action for exporting the current active annotations as an LLM-ready change request.
 - Local page storage through `chrome.storage.local`.
 - LLM-ready merged change-request copy, with compact, standard, detailed, and forensic context levels.
-- Optional sync to a local HTTP server on `http://localhost:4747`.
+- Optional sync to a local HTTP server on `http://localhost:4747`, with visible connection health in the toolbar.
 - MCP tools for agents to list, acknowledge, resolve, dismiss, reply to, and watch annotations.
 
 ## Install for development
@@ -39,6 +40,14 @@ Run the server health check:
 
 ```sh
 pnpm doctor
+```
+
+Verify source changes and the committed unpacked-extension bundle:
+
+```sh
+pnpm typecheck
+pnpm test
+pnpm check:extension-dist
 ```
 
 ## MCP usage

@@ -142,6 +142,8 @@ type MoveSource = {
   label: string;
 };
 
+type ServerStatus = "local" | "connecting" | "connected" | "offline";
+
 let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
 let annotations: Annotation[] = [];
 let selectionMode = false;
@@ -163,7 +165,9 @@ let pausedMedia: HTMLMediaElement[] = [];
 let extensionContextInvalidated = false;
 let serverOffline = false;
 let serverOfflineNotified = false;
+let serverStatus: ServerStatus = "local";
 let pageEnabledOverride: boolean | null = null;
+let bringToFrontFrame = 0;
 
 const existingRoot = document.getElementById(ROOT_ID);
 if (existingRoot) existingRoot.remove();
@@ -171,11 +175,16 @@ if (existingRoot) existingRoot.remove();
 const root = document.createElement("div");
 root.id = ROOT_ID;
 root.setAttribute("data-opentargetui", "root");
+root.setAttribute("popover", "manual");
 root.style.all = "initial";
 root.style.position = "fixed";
 root.style.inset = "0";
 root.style.zIndex = "2147483647";
 root.style.pointerEvents = "none";
+root.style.margin = "0";
+root.style.border = "0";
+root.style.padding = "0";
+root.style.background = "transparent";
 
 const shadow = root.attachShadow({ mode: "open" });
 document.documentElement.appendChild(root);
@@ -503,6 +512,10 @@ style.textContent = `
     align-items: center;
     gap: 6px;
     min-width: 0;
+  }
+
+  .status-pill.warn {
+    color: var(--otu-danger);
   }
 
   .dot {
@@ -879,6 +892,24 @@ style.textContent = `
     accent-color: var(--otu-accent);
   }
 
+  .sync-health {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px;
+    border: 1px solid var(--otu-line);
+    border-radius: 8px;
+    background: var(--otu-soft);
+    color: var(--otu-muted);
+    font-size: 11px;
+  }
+
+  .sync-health strong {
+    color: var(--otu-ink);
+    font-size: 12px;
+  }
+
   .toast {
     position: fixed;
     z-index: 60;
@@ -1017,11 +1048,13 @@ function isNetworkFetchError(error: unknown): boolean {
 function markServerAvailable(): void {
   serverOffline = false;
   serverOfflineNotified = false;
+  setServerStatus(settings.syncEnabled ? "connected" : "local");
 }
 
 function markServerUnavailable(error: unknown, message: string): void {
   disconnectEvents();
   serverOffline = true;
+  setServerStatus(settings.syncEnabled ? "offline" : "local");
   if (!serverOfflineNotified) {
     serverOfflineNotified = true;
     showToast(message);
@@ -1043,6 +1076,109 @@ function isInsideOverlay(event: Event): boolean {
 function updateAccent(): void {
   style.textContent = style.textContent?.replace(/--otu-accent: #[0-9a-fA-F]{6};/, `--otu-accent: ${settings.markerColor};`) ?? "";
 }
+
+function isRootPopoverOpen(): boolean {
+  try {
+    return root.matches(":popover-open");
+  } catch {
+    return false;
+  }
+}
+
+function showRootPopover(): void {
+  const popoverRoot = root as HTMLElement & { showPopover?: () => void };
+  if (typeof popoverRoot.showPopover !== "function" || isRootPopoverOpen()) return;
+  try {
+    popoverRoot.showPopover();
+  } catch {
+    // z-index fallback still applies on pages/browsers without stable popover support.
+  }
+}
+
+function bringRootToFront(): void {
+  const popoverRoot = root as HTMLElement & { hidePopover?: () => void; showPopover?: () => void };
+  if (typeof popoverRoot.showPopover !== "function") return;
+  try {
+    if (isRootPopoverOpen()) popoverRoot.hidePopover?.();
+    popoverRoot.showPopover();
+  } catch {
+    // z-index fallback still applies.
+  }
+}
+
+function scheduleBringRootToFront(): void {
+  if (!settings.enabled || bringToFrontFrame) return;
+  bringToFrontFrame = window.requestAnimationFrame(() => {
+    bringToFrontFrame = 0;
+    bringRootToFront();
+  });
+}
+
+function hideRootPopover(): void {
+  const popoverRoot = root as HTMLElement & { hidePopover?: () => void };
+  if (typeof popoverRoot.hidePopover !== "function" || !isRootPopoverOpen()) return;
+  try {
+    popoverRoot.hidePopover();
+  } catch {
+    // no-op
+  }
+}
+
+function setRootVisible(visible: boolean): void {
+  if (visible) {
+    root.style.display = "block";
+    showRootPopover();
+    return;
+  }
+  hideRootPopover();
+  root.style.display = "none";
+}
+
+function syncStatusLabel(): string {
+  if (!settings.syncEnabled) return "Local only";
+  if (serverStatus === "connecting") return "Connecting";
+  if (serverStatus === "connected") return "Server connected";
+  if (serverStatus === "offline") return "Server unavailable";
+  return "Sync enabled";
+}
+
+function syncStatusClass(): string {
+  if (serverStatus === "offline") return " warn";
+  return "";
+}
+
+function rerenderSyncStatus(): void {
+  renderToolbar();
+  if (settingsPanel.classList.contains("open")) renderSettings(true);
+}
+
+function setServerStatus(next: ServerStatus): void {
+  if (serverStatus === next) return;
+  serverStatus = next;
+  rerenderSyncStatus();
+}
+
+const topLayerObserver = new MutationObserver((mutations) => {
+  if (!settings.enabled) return;
+  const pagePopupChanged = mutations.some((mutation) => {
+    const target = mutation.target;
+    if (target instanceof Element && (target === root || target.closest(`[data-opentargetui]`))) return false;
+    return mutation.type === "childList" || mutation.attributeName === "open";
+  });
+  if (pagePopupChanged) scheduleBringRootToFront();
+});
+topLayerObserver.observe(document.documentElement, {
+  attributes: true,
+  attributeFilter: ["open"],
+  childList: true,
+  subtree: true
+});
+document.addEventListener("toggle", (event) => {
+  if (!settings.enabled) return;
+  const target = event.target;
+  if (target instanceof Element && target.closest(`[data-opentargetui]`)) return;
+  scheduleBringRootToFront();
+}, true);
 
 function activeAnnotations(): Annotation[] {
   return annotations.filter((annotation) => annotation.status !== "dismissed" && annotation.status !== "resolved");
@@ -1208,7 +1344,7 @@ function renderToolbar(): void {
       </div>
       <div class="status-row">
         <span class="status-pill"><span class="dot ${selectionMode || moveMode ? "on" : ""}"></span>${selectionMode ? "Click a target" : moveMode ? (moveSource ? "Click destination" : "Click item to move") : "Ready"}</span>
-        <span class="status-pill">${icon("server")} ${settings.syncEnabled ? "Sync enabled" : "Local only"}</span>
+        <span class="status-pill${syncStatusClass()}">${icon("server")} ${syncStatusLabel()}</span>
       </div>
     `;
   }
@@ -1367,6 +1503,10 @@ function renderSettings(open = false): void {
         </span>
         <input id="otu-sync" type="checkbox" ${settings.syncEnabled ? "checked" : ""} />
       </label>
+      <div class="sync-health">
+        <span>${icon("server")} <strong>${syncStatusLabel()}</strong></span>
+        ${settings.syncEnabled && serverStatus === "offline" ? `<button class="command" data-sync-retry>Retry</button>` : ""}
+      </div>
       <label class="toggle-row">
         <span class="toggle-copy">
           <strong>Copy after add</strong>
@@ -1392,6 +1532,10 @@ function renderSettings(open = false): void {
     renderSettings(false);
   });
 
+  settingsPanel.querySelector<HTMLButtonElement>("[data-sync-retry]")?.addEventListener("click", () => {
+    void connectToServer();
+  });
+
   settingsPanel.querySelector<HTMLButtonElement>("[data-settings-save]")?.addEventListener("click", async () => {
     const detail = settingsPanel.querySelector<HTMLSelectElement>("#otu-output-detail")?.value as OutputDetail;
     const markerColor = settingsPanel.querySelector<HTMLInputElement>("#otu-marker-color")?.value || settings.markerColor;
@@ -1407,7 +1551,10 @@ function renderSettings(open = false): void {
     renderMarkers();
     renderSettings(false);
     if (settings.syncEnabled) void connectToServer();
-    else disconnectEvents();
+    else {
+      disconnectEvents();
+      markServerAvailable();
+    }
     showToast("Settings saved");
   });
   positionPanelNearToolbar(settingsPanel);
@@ -1987,7 +2134,7 @@ async function loadState(): Promise<void> {
 }
 
 function applyEnabledState(): void {
-  root.style.display = settings.enabled ? "block" : "none";
+  setRootVisible(settings.enabled);
   if (settings.enabled) return;
   selectionMode = false;
   moveMode = false;
@@ -2018,7 +2165,10 @@ function applySettings(next: ExtensionSettings): void {
     if (batchPanel.classList.contains("open")) renderBatch(true);
   }
   if (settings.syncEnabled) void connectToServer();
-  else disconnectEvents();
+  else {
+    disconnectEvents();
+    markServerAvailable();
+  }
 }
 
 async function ensureSession(): Promise<string> {
@@ -2042,6 +2192,7 @@ async function connectToServer(): Promise<void> {
   try {
     serverOffline = false;
     serverOfflineNotified = false;
+    setServerStatus("connecting");
     const id = await ensureSession();
     await Promise.all(annotations.map((annotation) => syncAnnotation(annotation)));
     startEvents(id);

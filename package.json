@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm --filter @opentargetui/core build && pnpm -r typecheck",
     "test": "pnpm --filter @opentargetui/core build && pnpm -r test",
+    "check:extension-dist": "node scripts/check-extension-dist.mjs",
     "dev:extension": "pnpm --filter @opentargetui/extension dev",
     "dev:server": "pnpm --filter @opentargetui/mcp-server dev",
     "server": "pnpm --filter @opentargetui/mcp-server start",

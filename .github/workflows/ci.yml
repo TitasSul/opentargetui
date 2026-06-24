@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Typecheck, Test, And Verify Extension Dist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Verify committed extension dist is current
+        run: pnpm check:extension-dist
+
+      - name: Verify MV3 content script bundle
+        run: |
+          node -e "const fs=require('node:fs'); const text=fs.readFileSync('apps/extension/dist/content.js','utf8'); if (/^import\s/m.test(text)) { console.error('apps/extension/dist/content.js contains top-level imports'); process.exit(1); }"
