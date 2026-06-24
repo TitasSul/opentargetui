@@ -368,7 +368,7 @@ style.textContent = `
 
   .primary-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
   }
 
@@ -1323,10 +1323,6 @@ function renderToolbar(): void {
           ${icon("clipboardList")}
           <span>Review</span>
         </button>
-        <button class="action-button" data-action="copy" aria-label="Copy change request">
-          ${icon("copy")}
-          <span>Copy request</span>
-        </button>
       </div>
       <div class="utility-actions" aria-label="OpenTarget UI utilities">
         <button class="icon-button ${settings.hideMarkers ? "active" : ""}" data-action="hide" aria-label="${settings.hideMarkers ? "Show markers" : "Hide markers"}" data-tooltip="${settings.hideMarkers ? "Show markers" : "Hide markers"}">
@@ -1618,11 +1614,6 @@ async function handleToolbarAction(action: string): Promise<void> {
     return;
   }
 
-  if (action === "copy") {
-    await copyFeedback();
-    return;
-  }
-
   if (action === "clear") {
     if (activeAnnotations().length === 0) {
       resetClearConfirmation();
@@ -1795,12 +1786,16 @@ function openCreateComposer(target: DraftTarget): void {
   composer.innerHTML = `
     <textarea id="otu-comment" placeholder="Type the change for this target"></textarea>
     <div class="button-row">
-      <button class="command primary" data-merge>${icon("message")} Merge</button>
+      <button class="command" data-merge>${icon("message")} Merge</button>
+      <button class="command primary" data-copy>${icon("copy")} Copy</button>
     </div>
   `;
   composer.querySelector<HTMLTextAreaElement>("#otu-comment")?.focus();
   composer.querySelector<HTMLButtonElement>("[data-merge]")?.addEventListener("click", () => {
     void addAnnotationFromComposer();
+  });
+  composer.querySelector<HTMLButtonElement>("[data-copy]")?.addEventListener("click", () => {
+    void addAnnotationFromComposer({ copyOnly: true });
   });
 }
 
@@ -1864,15 +1859,23 @@ function closeComposer(): void {
   composer.innerHTML = "";
 }
 
-function handleComposerKeyDown(event: KeyboardEvent): void {
+function composerOpen(): boolean {
+  return composer.classList.contains("open");
+}
+
+function handleGlobalComposerKeyDown(event: KeyboardEvent): void {
   if (event.key !== "Escape") return;
-  if (!composer.classList.contains("open") || composer.dataset.mode !== "create") return;
+  if (!composerOpen()) return;
   event.preventDefault();
   event.stopPropagation();
   closeComposer();
 }
 
-async function addAnnotationFromComposer(): Promise<void> {
+function stopComposerKeyLeak(event: KeyboardEvent): void {
+  if (event.key !== "Escape") event.stopPropagation();
+}
+
+async function addAnnotationFromComposer(options: { copyOnly?: boolean } = {}): Promise<void> {
   if (!pendingTarget) return;
   const comment = composer.querySelector<HTMLTextAreaElement>("#otu-comment")?.value.trim() ?? "";
   if (!comment) {
@@ -1881,6 +1884,12 @@ async function addAnnotationFromComposer(): Promise<void> {
   }
 
   const annotation = annotationFromDraft(pendingTarget, comment, "change", "important");
+  if (options.copyOnly) {
+    await copyAnnotations([annotation]);
+    closeComposer();
+    return;
+  }
+
   annotations = [...annotations, annotation];
   await persistAnnotations();
   renderToolbar();
@@ -1926,10 +1935,6 @@ async function buildFeedbackMarkdown(items: Annotation[]): Promise<string | null
     detail: settings.outputDetail,
     includeHeader: true
   });
-}
-
-async function copyFeedback(show = true): Promise<boolean> {
-  return copyAnnotations(activeAnnotations(), show);
 }
 
 async function copyAnnotations(items: Annotation[], show = true): Promise<boolean> {
@@ -2307,6 +2312,7 @@ async function handleMoveClick(event: MouseEvent): Promise<void> {
 
 function handleMouseUp(event: MouseEvent): void {
   if (!settings.enabled) return;
+  if (composerOpen()) return;
   if (!selectionMode || isInsideOverlay(event)) return;
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.toString().trim().length === 0) return;
@@ -2332,6 +2338,15 @@ function handleMouseUp(event: MouseEvent): void {
 
 function handleClick(event: MouseEvent): void {
   if (!settings.enabled) return;
+  if (composerOpen() && !isInsideOverlay(event)) {
+    if (settings.blockPageInteractions) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    closeComposer();
+    return;
+  }
+
   if (moveMode) {
     void handleMoveClick(event);
     return;
@@ -2379,11 +2394,12 @@ document.addEventListener("mousemove", handleMouseMove, true);
 document.addEventListener("mouseout", handleMouseOut, true);
 document.addEventListener("mouseup", handleMouseUp, true);
 document.addEventListener("click", handleClick, true);
-document.addEventListener("keydown", handleComposerKeyDown, true);
+document.addEventListener("keydown", handleGlobalComposerKeyDown, true);
 toolbar.addEventListener("pointerdown", handleToolbarPointerDown);
 toolbar.addEventListener("pointermove", handleToolbarPointerMove);
 toolbar.addEventListener("pointerup", endToolbarDrag);
 toolbar.addEventListener("pointercancel", endToolbarDrag);
+composer.addEventListener("keydown", stopComposerKeyLeak);
 composer.addEventListener("pointerdown", handleComposerPointerDown);
 composer.addEventListener("pointermove", handleComposerPointerMove);
 composer.addEventListener("pointerup", endComposerDrag);
