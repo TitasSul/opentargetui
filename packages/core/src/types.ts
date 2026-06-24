@@ -100,7 +100,6 @@ export interface ExtensionSettings {
   markerColor: string;
   serverUrl: string;
   syncEnabled: boolean;
-  copyOnAdd: boolean;
   hideMarkers: boolean;
   blockPageInteractions: boolean;
   uiPosition?: UiPosition;

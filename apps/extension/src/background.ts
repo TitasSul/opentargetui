@@ -9,10 +9,14 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   markerColor: "#35c5b1",
   serverUrl: "http://localhost:4747",
   syncEnabled: false,
-  copyOnAdd: false,
   hideMarkers: false,
   blockPageInteractions: true
 };
+
+function cleanSettings(value: Partial<ExtensionSettings> & { copyOnAdd?: unknown }): Partial<ExtensionSettings> {
+  const { copyOnAdd: _copyOnAdd, ...settings } = value;
+  return settings;
+}
 
 chrome.runtime.onInstalled.addListener(async () => {
   const existing = await chrome.storage.local.get([SETTINGS_KEY, DEFAULT_DISABLED_MIGRATION_KEY]);
@@ -26,7 +30,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
   if (!migrated) {
     await chrome.storage.local.set({
-      [SETTINGS_KEY]: { ...DEFAULT_SETTINGS, ...existingSettings, enabled: false },
+      [SETTINGS_KEY]: { ...DEFAULT_SETTINGS, ...cleanSettings(existingSettings), enabled: false },
       [DEFAULT_DISABLED_MIGRATION_KEY]: true
     });
   }

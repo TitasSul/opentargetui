@@ -42,7 +42,6 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   markerColor: "#35c5b1",
   serverUrl: "http://localhost:4747",
   syncEnabled: false,
-  copyOnAdd: false,
   hideMarkers: false,
   blockPageInteractions: true
 };
@@ -1024,7 +1023,8 @@ async function storageSet(key: string, value: unknown): Promise<void> {
 }
 
 async function persistSettingsPreferences(): Promise<void> {
-  await storageSet(settingsStorageKey(), { ...settings, enabled: false });
+  const { copyOnAdd: _copyOnAdd, ...persisted } = settings as ExtensionSettings & { copyOnAdd?: unknown };
+  await storageSet(settingsStorageKey(), { ...persisted, enabled: false });
 }
 
 function normalizeServerUrl(value: string): string {
@@ -1325,7 +1325,7 @@ function renderToolbar(): void {
         </button>
         <button class="action-button" data-action="copy" aria-label="Copy change request">
           ${icon("copy")}
-          <span>Copy</span>
+          <span>Copy request</span>
         </button>
       </div>
       <div class="utility-actions" aria-label="OpenTarget UI utilities">
@@ -1509,13 +1509,6 @@ function renderSettings(open = false): void {
       </div>
       <label class="toggle-row">
         <span class="toggle-copy">
-          <strong>Copy after add</strong>
-          <small>Put markdown on the clipboard immediately.</small>
-        </span>
-        <input id="otu-copy-add" type="checkbox" ${settings.copyOnAdd ? "checked" : ""} />
-      </label>
-      <label class="toggle-row">
-        <span class="toggle-copy">
           <strong>Block page clicks while annotating</strong>
           <small>Prevents accidental page actions.</small>
         </span>
@@ -1541,10 +1534,9 @@ function renderSettings(open = false): void {
     const markerColor = settingsPanel.querySelector<HTMLInputElement>("#otu-marker-color")?.value || settings.markerColor;
     const serverUrl = normalizeServerUrl(settingsPanel.querySelector<HTMLInputElement>("#otu-server-url")?.value || settings.serverUrl);
     const syncEnabled = Boolean(settingsPanel.querySelector<HTMLInputElement>("#otu-sync")?.checked);
-    const copyOnAdd = Boolean(settingsPanel.querySelector<HTMLInputElement>("#otu-copy-add")?.checked);
     const blockPageInteractions = Boolean(settingsPanel.querySelector<HTMLInputElement>("#otu-block")?.checked);
 
-    settings = { ...settings, outputDetail: detail, markerColor, serverUrl, syncEnabled, copyOnAdd, blockPageInteractions };
+    settings = { ...settings, outputDetail: detail, markerColor, serverUrl, syncEnabled, blockPageInteractions };
     await persistSettingsPreferences();
     updateAccent();
     renderToolbar();
@@ -1803,16 +1795,12 @@ function openCreateComposer(target: DraftTarget): void {
   composer.innerHTML = `
     <textarea id="otu-comment" placeholder="Type the change for this target"></textarea>
     <div class="button-row">
-      <button class="command" data-merge>${icon("message")} Merge</button>
-      <button class="command primary" data-copy>${icon("copy")} Copy</button>
+      <button class="command primary" data-merge>${icon("message")} Merge</button>
     </div>
   `;
   composer.querySelector<HTMLTextAreaElement>("#otu-comment")?.focus();
   composer.querySelector<HTMLButtonElement>("[data-merge]")?.addEventListener("click", () => {
-    void addAnnotationFromComposer({ copyAfter: false });
-  });
-  composer.querySelector<HTMLButtonElement>("[data-copy]")?.addEventListener("click", () => {
-    void addAnnotationFromComposer({ copyAfter: true });
+    void addAnnotationFromComposer();
   });
 }
 
@@ -1884,7 +1872,7 @@ function handleComposerKeyDown(event: KeyboardEvent): void {
   closeComposer();
 }
 
-async function addAnnotationFromComposer(options: { copyAfter: boolean }): Promise<void> {
+async function addAnnotationFromComposer(): Promise<void> {
   if (!pendingTarget) return;
   const comment = composer.querySelector<HTMLTextAreaElement>("#otu-comment")?.value.trim() ?? "";
   if (!comment) {
@@ -1893,13 +1881,6 @@ async function addAnnotationFromComposer(options: { copyAfter: boolean }): Promi
   }
 
   const annotation = annotationFromDraft(pendingTarget, comment, "change", "important");
-  if (options.copyAfter) {
-    await copyAnnotations([...activeAnnotations(), annotation], false);
-    closeComposer();
-    showToast("Copied without marker");
-    return;
-  }
-
   annotations = [...annotations, annotation];
   await persistAnnotations();
   renderToolbar();
@@ -1907,12 +1888,7 @@ async function addAnnotationFromComposer(options: { copyAfter: boolean }): Promi
   if (batchPanel.classList.contains("open")) renderBatch(true);
   closeComposer();
   if (settings.syncEnabled) queueRemoteSync(() => syncAnnotation(annotation));
-  if (settings.copyOnAdd) {
-    await copyFeedback(false);
-    showToast("Merged and copied");
-  } else {
-    showToast("Merged into batch");
-  }
+  showToast("Merged into batch");
 }
 
 async function saveEditingAnnotation(): Promise<void> {
@@ -2121,7 +2097,11 @@ async function persistAnnotations(): Promise<void> {
 }
 
 async function loadState(): Promise<void> {
-  settings = { ...DEFAULT_SETTINGS, ...(await storageGet(settingsStorageKey(), DEFAULT_SETTINGS)), enabled: pageEnabledOverride ?? false };
+  const { copyOnAdd: _copyOnAdd, ...storedSettings } = await storageGet<Partial<ExtensionSettings> & { copyOnAdd?: unknown }>(
+    settingsStorageKey(),
+    DEFAULT_SETTINGS
+  );
+  settings = { ...DEFAULT_SETTINGS, ...storedSettings, enabled: pageEnabledOverride ?? false };
   settings.serverUrl = normalizeServerUrl(settings.serverUrl);
   annotations = await storageGet<Annotation[]>(pageStorageKey(location.href), []);
   sessionId = await storageGet<string | null>(pageSessionKey(location.href), null);
@@ -2149,9 +2129,10 @@ function applyEnabledState(): void {
 
 function applySettings(next: ExtensionSettings): void {
   const wasEnabled = settings.enabled;
+  const { copyOnAdd: _copyOnAdd, ...nextSettings } = next as ExtensionSettings & { copyOnAdd?: unknown };
   settings = {
     ...DEFAULT_SETTINGS,
-    ...next,
+    ...nextSettings,
     enabled: settings.enabled,
     serverUrl: normalizeServerUrl(next.serverUrl || DEFAULT_SETTINGS.serverUrl)
   };

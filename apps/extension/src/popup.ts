@@ -11,7 +11,6 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   markerColor: "#35c5b1",
   serverUrl: "http://localhost:4747",
   syncEnabled: false,
-  copyOnAdd: false,
   hideMarkers: false,
   blockPageInteractions: true
 };
@@ -74,11 +73,15 @@ async function activeTab(): Promise<chrome.tabs.Tab | undefined> {
 
 async function loadSettings(): Promise<ExtensionSettings> {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
-  return { ...DEFAULT_SETTINGS, ...(result[SETTINGS_KEY] as Partial<ExtensionSettings> | undefined), enabled: false };
+  const { copyOnAdd: _copyOnAdd, ...storedSettings } = (result[SETTINGS_KEY] ?? {}) as Partial<ExtensionSettings> & {
+    copyOnAdd?: unknown;
+  };
+  return { ...DEFAULT_SETTINGS, ...storedSettings, enabled: false };
 }
 
 async function saveSettings(next: ExtensionSettings): Promise<void> {
-  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...next, enabled: false } });
+  const { copyOnAdd: _copyOnAdd, ...settings } = next as ExtensionSettings & { copyOnAdd?: unknown };
+  await chrome.storage.local.set({ [SETTINGS_KEY]: { ...settings, enabled: false } });
 }
 
 function renderEnabledState(enabled: boolean): void {
