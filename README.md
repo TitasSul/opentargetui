@@ -1,6 +1,6 @@
 # OpenTarget UI
 
-OpenTarget UI is an MIT-licensed browser extension for giving precise visual feedback to AI coding agents. It lets you mark elements on a live page, copy focused change requests from the annotation popup, create move requests, and optionally sync saved annotations to a local MCP server.
+OpenTarget UI is an MIT-licensed browser extension for giving precise visual feedback to AI coding agents. It lets you mark elements on a live page, copy focused change requests from the annotation popup, create move requests, and optionally sync saved annotations to a local server that MCP-capable agents can read.
 
 This is a clean-room implementation. It is feature-compatible with the public idea of structured UI feedback, but it does not copy Agentation source code, branding, assets, or interface text.
 
@@ -14,7 +14,7 @@ This is a clean-room implementation. It is feature-compatible with the public id
 - Review batch panel for editing, deleting, or clearing the current page changes.
 - Local page storage through `chrome.storage.local`.
 - LLM-ready change-request markdown, with compact, standard, detailed, and forensic context levels.
-- Optional sync to a local HTTP server on `http://localhost:4747`, with visible connection health in the toolbar.
+- Optional local sync/MCP bridge server on `http://localhost:4747`, with visible connection health in the toolbar.
 - MCP tools for agents to list, acknowledge, resolve, dismiss, reply to, and watch annotations.
 
 ## Use the extension
@@ -38,7 +38,7 @@ No build step is needed just to load the extension because the unpacked extensio
 4. Use `Move` to click an element, then click its destination. The completed move request is saved and copied.
 5. Use `Review` to edit, delete, or clear saved page changes.
 
-## Start local sync server
+## Turn on local sync / MCP bridge
 
 On macOS, double-click:
 
@@ -46,7 +46,9 @@ On macOS, double-click:
 Start OpenTarget UI Server.command
 ```
 
-The launcher installs dependencies if needed, builds the local server, then starts `http://localhost:4747`. Keep the Terminal window open while extension sync is enabled.
+Plain English: this turns on the local OpenTarget backend. Keep the Terminal window open, then enable Sync in the extension settings. After that, saved annotations are available to the local server and to MCP tools configured for this repo.
+
+The launcher installs dependencies if needed, builds the local server, then starts `http://localhost:4747`.
 
 Manual server commands:
 
