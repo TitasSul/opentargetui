@@ -40,13 +40,14 @@ No build step is needed just to load the extension because the unpacked extensio
 
 ## Turn on local sync / MCP bridge
 
-On macOS, double-click:
+Double-click the launcher for your operating system:
 
 ```txt
-Start OpenTarget UI Server.command
+macOS:   Start OpenTarget UI Server.command
+Windows: Start OpenTarget UI Server.cmd
 ```
 
-Plain English: this turns on the local OpenTarget backend. Keep the Terminal window open, then enable Sync in the extension settings. After that, saved annotations are available to the local server and to MCP tools configured for this repo.
+Plain English: this turns on the local OpenTarget backend. Keep the Terminal or Command Prompt window open, then enable Sync in the extension settings. After that, saved annotations are available to the local server and to MCP tools configured for this repo.
 
 The launcher installs dependencies if needed, builds the local server, then starts `http://localhost:4747`.
 
