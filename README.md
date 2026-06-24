@@ -4,6 +4,8 @@ OpenTarget UI is an MIT-licensed browser extension for giving precise visual fee
 
 This is a clean-room implementation. It is feature-compatible with the public idea of structured UI feedback, but it does not copy Agentation source code, branding, assets, or interface text.
 
+![OpenTarget UI screenshot](assets/screenshot.png)
+
 ## What ships in v0.1
 
 - Chrome/Edge Manifest V3 extension.
