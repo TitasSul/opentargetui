@@ -167,6 +167,7 @@ let serverOfflineNotified = false;
 let serverStatus: ServerStatus = "local";
 let pageEnabledOverride: boolean | null = null;
 let bringToFrontFrame = 0;
+let blockedOverlayButton: HTMLButtonElement | null = null;
 
 const existingRoot = document.getElementById(ROOT_ID);
 if (existingRoot) existingRoot.remove();
@@ -1071,6 +1072,51 @@ function queueRemoteSync(operation: () => Promise<void>): void {
 
 function isInsideOverlay(event: Event): boolean {
   return event.composedPath().includes(root) || event.composedPath().includes(shadow);
+}
+
+function blockedOverlayTarget(event: MouseEvent): Element | null {
+  if (!settings.enabled || isInsideOverlay(event)) return null;
+  const hit = shadow.elementFromPoint(event.clientX, event.clientY);
+  if (!(hit instanceof Element)) return null;
+  return hit.closest("button, input, textarea, select, .toolbar, .panel, .marker");
+}
+
+function stopPagePopupEvent(event: Event): void {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+}
+
+function focusOverlayTarget(target: Element): void {
+  if (target instanceof HTMLElement) target.focus();
+}
+
+function handleBlockedOverlayPointer(event: PointerEvent): void {
+  const target = blockedOverlayTarget(event);
+  if (!target) return;
+  stopPagePopupEvent(event);
+
+  if (event.type === "pointerdown") {
+    blockedOverlayButton = target.closest("button");
+    focusOverlayTarget(target);
+    return;
+  }
+
+  if (event.type === "pointerup") {
+    const button = target.closest("button");
+    if (button && button === blockedOverlayButton) button.click();
+    blockedOverlayButton = null;
+    return;
+  }
+
+  if (event.type === "pointercancel") blockedOverlayButton = null;
+}
+
+function handleBlockedOverlayMouse(event: MouseEvent): void {
+  const target = blockedOverlayTarget(event);
+  if (!target) return;
+  stopPagePopupEvent(event);
+  if (event.type === "mousedown") focusOverlayTarget(target);
 }
 
 function updateAccent(): void {
@@ -2401,6 +2447,12 @@ document.addEventListener("mouseout", handleMouseOut, true);
 document.addEventListener("mouseup", handleMouseUp, true);
 document.addEventListener("click", handleClick, true);
 document.addEventListener("keydown", handleGlobalComposerKeyDown, true);
+window.addEventListener("pointerdown", handleBlockedOverlayPointer, true);
+window.addEventListener("pointerup", handleBlockedOverlayPointer, true);
+window.addEventListener("pointercancel", handleBlockedOverlayPointer, true);
+window.addEventListener("mousedown", handleBlockedOverlayMouse, true);
+window.addEventListener("mouseup", handleBlockedOverlayMouse, true);
+window.addEventListener("click", handleBlockedOverlayMouse, true);
 toolbar.addEventListener("pointerdown", handleToolbarPointerDown);
 toolbar.addEventListener("pointermove", handleToolbarPointerMove);
 toolbar.addEventListener("pointerup", endToolbarDrag);
